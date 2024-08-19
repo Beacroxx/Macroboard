@@ -37,3 +37,9 @@ cmd2 = true
 cmd3 = true
 cmd4 = true
 cmd5 = true
+
+[fader_left]
+port = Master
+
+[fader_right]
+port = Capture

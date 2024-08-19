@@ -27,8 +27,8 @@ void trim(char *str) {
 void load_config(const char* filename, char commands[MAX_COMMANDS][MAX_LINE], const char* section) {
 	FILE* file = fopen(filename, "r");
 	if (file == NULL) {
-		printf("Error opening file\n");
-		return;
+		printf("Error opening file %s\n Does it exist?\n", filename);
+		exit(1);
 	}
 
 	char line[MAX_LINE];
@@ -77,6 +77,7 @@ int set_volume(const char* element_name, long volume) {
 
 	if (elem) {
 		snd_mixer_selem_set_playback_volume_all(elem, volume);
+		snd_mixer_selem_set_capture_volume_all(elem, volume);
 	} else {
 		snd_mixer_close(handle);
 		return -1;
@@ -96,6 +97,8 @@ int main() {
 	char enc_cmds_cw_pressed[MAX_COMMANDS][MAX_LINE];
 	char enc_cmds_ccw[MAX_COMMANDS][MAX_LINE];
 	char enc_cmds_ccw_pressed[MAX_COMMANDS][MAX_LINE];
+	char fader_left[MAX_COMMANDS][MAX_LINE];
+	char fader_right[MAX_COMMANDS][MAX_LINE];
 
 	char config_path[512];
 	snprintf(config_path, sizeof(config_path), "%s/.config/macropad/config.ini", getenv("HOME"));
@@ -105,6 +108,8 @@ int main() {
 	load_config(config_path, enc_cmds_cw_pressed, "enc_cmds_cw_pressed");
 	load_config(config_path, enc_cmds_ccw, "enc_cmds_ccw");
 	load_config(config_path, enc_cmds_ccw_pressed, "enc_cmds_ccw_pressed");
+	load_config(config_path, fader_left, "fader_left");
+	load_config(config_path, fader_right, "fader_right");
 
   while (1) {
 		r = rawhid_open(1, 0x16C0, 0x0480, 0xFFAB, 0x0200);
@@ -131,15 +136,15 @@ int main() {
 				while (idx < num) {
 					switch (buf[(int)idx]) {
 					case 0x01:
-						// read master volume
+						// read left volume
 						value = (uint16_t)(((unsigned char)buf[idx + 1] << 8) | (unsigned char)buf[idx + 2]);
-						set_volume("Master", value * 16);
+						set_volume(fader_left[0], value * 16);
 						idx += 3;
 						break;
 					case 0x02:
-						// read capture volume
+						// read right volume
 						value = (uint16_t)(((unsigned char)buf[idx + 1] << 8) | (unsigned char)buf[idx + 2]);
-						set_volume("Capture", value * 16);
+						set_volume(fader_right[0], value * 16);
 						idx += 3;
 						break;
 					case 0x03:
