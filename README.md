@@ -6,7 +6,7 @@ This macro pad is a custom-built USB device with a very simple purpose: to send 
 - 10 Cherry MX Blue switches
 - 2 linear faders
 
-You can see an image of it [here](assets/image.png).
+You can see an image of it ![here](assets/image.png).
 
 There is no schematic or 3d model provided. 
 
