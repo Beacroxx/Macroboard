@@ -1,0 +1,39 @@
+[button_cmds]
+cmd1 = swaymsg exec vesktop
+cmd2 = swaymsg exec brave
+cmd3 = swaymsg exec tidal-hifi
+cmd4 = swaymsg exec code
+cmd5 = swaymsg exec kitty
+cmd6 = true
+cmd7 = true
+cmd8 = true
+cmd9 = true
+cmd10 = true
+
+[enc_cmds_cw]
+cmd1 = swaymsg workspace next
+cmd2 = true
+cmd3 = true
+cmd4 = true
+cmd5 = true
+
+[enc_cmds_cw_pressed]
+cmd1 = swaymsg workspace $(swaymsg -t get_workspaces | jq '[.[].num] | max + 1')
+cmd2 = true
+cmd3 = true
+cmd4 = true
+cmd5 = true
+
+[enc_cmds_ccw]
+cmd1 = swaymsg workspace prev
+cmd2 = true
+cmd3 = true
+cmd4 = true
+cmd5 = true
+
+[enc_cmds_ccw_pressed]
+cmd1 = swaymsg workspace prev
+cmd2 = true
+cmd3 = true
+cmd4 = true
+cmd5 = true
