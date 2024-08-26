@@ -1,15 +1,12 @@
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <libudev.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
 #include <alsa/asoundlib.h>
-#include "hid.h"
 #include <ctype.h>
 
 #define MAX_LINE 256
 #define MAX_COMMANDS 10
+
+#define run_command(cmd) system(cmd)
 
 // Trim whitespace from a string
 void trim(char *str) {
@@ -87,9 +84,43 @@ int set_volume(const char* element_name, long volume) {
 	return 0;
 }
 
+int connect_to_midi_device(snd_seq_t *seq, int port) {
+    snd_seq_addr_t sender, dest;
+    snd_seq_port_info_t *pinfo;
+    snd_seq_port_info_alloca(&pinfo);
+    int client;
+
+    for (client = 0; client < 128; ++client) {
+        if (snd_seq_get_any_client_info(seq, client, pinfo) >= 0) {
+            const char *name = snd_seq_client_info_get_name(pinfo);
+            if (strstr(name, "Teensy") != NULL) {  // Replace with your device's name
+                sender.client = client;
+                sender.port = 0;  // Assuming it's the first port, adjust if needed
+                break;
+            }
+        }
+    }
+
+    if (client == 128) {
+        return 0;  // Device not found
+    }
+
+    dest.client = snd_seq_client_id(seq);
+    dest.port = port;
+
+    // Disconnect existing connections
+    snd_seq_disconnect_from(seq, port, sender.client, sender.port);
+
+    if (snd_seq_connect_from(seq, port, sender.client, sender.port) < 0) {
+        return 0;  // Cannot connect
+    }
+
+    return 1;  // Successfully connected
+}
+
 int main() {
-  int r, num;
-  char buf[64];
+	snd_seq_t *seq;
+	int port;
 
 	// load config file
 	char button_cmds[MAX_COMMANDS][MAX_LINE];
@@ -99,6 +130,9 @@ int main() {
 	char enc_cmds_ccw_pressed[MAX_COMMANDS][MAX_LINE];
 	char fader_left[MAX_COMMANDS][MAX_LINE];
 	char fader_right[MAX_COMMANDS][MAX_LINE];
+
+	// buttons for encoders
+	char enc_buttons[5];
 
 	char config_path[512];
 	snprintf(config_path, sizeof(config_path), "%s/.config/macropad/config.ini", getenv("HOME"));
@@ -111,73 +145,98 @@ int main() {
 	load_config(config_path, fader_left, "fader_left");
 	load_config(config_path, fader_right, "fader_right");
 
+   // Open ALSA sequencer
+    if (snd_seq_open(&seq, "default", SND_SEQ_OPEN_DUPLEX, 0) < 0) {
+        fprintf(stderr, "Error opening ALSA sequencer.\n");
+        exit(1);
+    }
+
+    snd_seq_set_client_name(seq, "MIDI Macropad Driver");
+
+    // Create a port for our application
+    if ((port = snd_seq_create_simple_port(seq, "MIDI Macropad Port",
+        SND_SEQ_PORT_CAP_WRITE|SND_SEQ_PORT_CAP_SUBS_WRITE|
+        SND_SEQ_PORT_CAP_READ|SND_SEQ_PORT_CAP_SUBS_READ,
+        SND_SEQ_PORT_TYPE_APPLICATION)) < 0) {
+        fprintf(stderr, "Error creating sequencer port.\n");
+        snd_seq_close(seq);
+        exit(1);
+    }
+
+    if (!connect_to_midi_device(seq, port)) {
+        fprintf(stderr, "Failed to connect to MIDI device.\n");
+        snd_seq_close(seq);
+        exit(1);
+    }
+
+    printf("Connected to MIDI device. Listening on port %d\n", port);
+
   while (1) {
-		r = rawhid_open(1, 0x16C0, 0x0480, 0xFFAB, 0x0200);
-		if (r <= 0) {
-			r = rawhid_open(1, 0x16C0, 0x0486, 0xFFAB, 0x0200);
-			if (r <= 0) {
-				printf("no rawhid device found.\n");
+		snd_seq_event_t *ev;
+        
+		int err = snd_seq_event_input_pending(seq, 1);
+
+		if (err == 0) {
+			if (!connect_to_midi_device(seq, port)) {
+				fprintf(stderr, "MIDI device disconnected.\n");
+				snd_seq_close(seq);
 				exit(0);
 			}
 		}
-		printf("found rawhid device\n");
 
-		while (1) {
-			// read rawhid data
-			num = rawhid_recv(0, buf, 64, 220);
-			if (num < 0) {
-				printf("\nerror reading, device went offline, exiting...\n");
-				rawhid_close(0);
-				exit(0);
-			}
-			if (num > 0) {
-				unsigned long value;
-				char idx = 0, dir = 0, btn = 0;
-				while (idx < num) {
-					switch (buf[(int)idx]) {
-					case 0x01:
-						// read left volume
-						value = (uint16_t)(((unsigned char)buf[idx + 1] << 8) | (unsigned char)buf[idx + 2]);
-						set_volume(fader_left[0], value * 16);
-						idx += 3;
-						break;
-					case 0x02:
-						// read right volume
-						value = (uint16_t)(((unsigned char)buf[idx + 1] << 8) | (unsigned char)buf[idx + 2]);
-						set_volume(fader_right[0], value * 16);
-						idx += 3;
-						break;
-					case 0x03:
-						// button press
-						value = buf[idx + 1];
-						system(button_cmds[value]);
-						idx += 2;
-						break;
-					case 0x04:
-						// encoder rotation
-						dir = buf[idx + 1];
-						value = buf[idx + 2];
-						btn = buf[idx + 3];
-						if (btn) {
-							if (dir)
-								system(enc_cmds_cw_pressed[value]);
-							else
-								system(enc_cmds_ccw_pressed[value]);
+		// Wait for MIDI event
+		snd_seq_event_input(seq, &ev);
+		switch (ev->type) {
+			case SND_SEQ_EVENT_CONTROLLER:
+				if (ev->data.control.param == 1) {
+					// Left Fader
+					set_volume(fader_left[0], ev->data.control.value * 516);
+				} else if (ev->data.control.param == 2) {
+					// Right Fader
+					set_volume(fader_right[0], ev->data.control.value * 516);
+				} else if (ev->data.control.param >= 3 && ev->data.control.param < 13) {
+					// Encoders
+					int index = ev->data.control.param - 3;
+					char pressed = enc_buttons[index];
+					if (ev->data.control.value == 65) {
+						// CW
+						if (pressed == 1) {
+							run_command(enc_cmds_cw_pressed[index]);
 						} else {
-							if (dir)
-								system(enc_cmds_cw[value]);
-							else
-								system(enc_cmds_ccw[value]);
+							run_command(enc_cmds_cw[index]);
 						}
-						idx += 4;
-						break;
-					default:
-						idx++;
-						break;
+					} else if (ev->data.control.value == 63) {
+						// CCW
+						if (pressed == 1) {
+							run_command(enc_cmds_ccw_pressed[index]);
+						} else {
+							run_command(enc_cmds_ccw[index]);
+						}
 					}
 				}
-			}
+
+				break;
+
+		  case SND_SEQ_EVENT_NOTEON:
+				if (ev->data.note.note >= 60 && ev->data.note.note < 70) {
+					run_command(button_cmds[ev->data.note.note - 60]);
+				} else if (ev->data.note.note >= 70 && ev->data.note.note < 75) {
+					int encoder = ev->data.note.note - 70;
+					enc_buttons[encoder] = 1;
+				}
+
+				break;
+
+		  case SND_SEQ_EVENT_NOTEOFF:
+				if (ev->data.note.note >= 70 && ev->data.note.note < 75) {
+					int encoder = ev->data.note.note - 70;
+					enc_buttons[encoder] = 0;
+				}
+
+				break;
+
+		  default:
+				break;
 		}
 	}
 }
-

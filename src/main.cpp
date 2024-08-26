@@ -1,19 +1,7 @@
 #include <Arduino.h>
 #include <Bounce2.h>
 #include <Encoder.h>
-#include <usb_rawhid.h>
-
-// USB Vendor and Product IDs
-#define VENDOR_ID               0x16C0
-#define PRODUCT_ID              0x0480
-#define RAWHID_USAGE_PAGE       0xFFAB
-#define RAWHID_USAGE            0x0200
-
-// USB Raw HID packet sizes and intervals
-#define RAWHID_TX_SIZE          64
-#define RAWHID_TX_INTERVAL      10
-#define RAWHID_RX_SIZE          64
-#define RAWHID_RX_INTERVAL      8
+#include <MIDI.h>
 
 // Pins for buttons and encoders
 const uint8_t button[15] = {21, 38, 20, 39, 17, 40, 16, 41, 15, 14, 33, 34, 35, 36, 37};
@@ -35,10 +23,6 @@ Encoder encoders[5]{
 uint16_t prevSlider[2] = {0, 0};
 uint16_t slider[2] = {0, 0};
 
-// Buffer for sending data over USB Raw HID
-uint8_t buffer[64];
-uint8_t idx = 0;
-
 int main() {
   // Set up the analog to digital conversion
   analogReadResolution(12);
@@ -50,39 +34,31 @@ int main() {
     buttons[i].interval(5);
   }
 
+  // Initialize MIDI
+  usbMIDI.begin();
+
   while (true) {
     // Store the previous slider values
     prevSlider[0] = slider[0];
     prevSlider[1] = slider[1];
 
     // Read the current slider values
-    slider[0] = analogRead(22);
-    slider[1] = analogRead(23);
-
-    // Debounce the slider values
-    if (abs(slider[0] - prevSlider[0]) < 5) {
-      slider[0] = prevSlider[0];
-    }
-    if (abs(slider[1] - prevSlider[1]) < 5) {
-      slider[1] = prevSlider[1];
-    }
+    slider[0] = map(analogRead(22), 0, 4095, 0, 127);
+    slider[1] = map(analogRead(23), 0, 4095, 0, 127);
 
     // If the slider values have changed, add them to the buffer
     if (prevSlider[0] != slider[0] || prevSlider[1] != slider[1]) {
-      buffer[idx++] = 0x01;
-      buffer[idx++] = (uint8_t)(slider[0] >> 8);
-      buffer[idx++] = (uint8_t)(slider[0] & 0xFF);
-      buffer[idx++] = 0x02;
-      buffer[idx++] = (uint8_t)(slider[1] >> 8);
-      buffer[idx++] = (uint8_t)(slider[1] & 0xFF);
+      usbMIDI.sendControlChange(1, slider[0], 1);
+      usbMIDI.sendControlChange(2, slider[1], 1);
     }
 
     // Iterate over the buttons, add their values to the buffer if they have changed
     for (int i = 0; i < 10; i++) {
       buttons[i].update();
       if (buttons[i].fell()) {
-        buffer[idx++] = 0x03;
-        buffer[idx++] = i;
+        usbMIDI.sendNoteOn(60 + i, 127, 1);
+      } else if (buttons[i].rose()) {
+        usbMIDI.sendNoteOff(60 + i, 127, 1);
       }
     }
 
@@ -90,26 +66,20 @@ int main() {
     for (int i = 0; i < 5; i++) {
       long newPos = encoders[i].read();
       buttons[i+10].update();
+      if (buttons[i+10].fell()) {
+        usbMIDI.sendNoteOn(70 + i, 127, 1);
+      } else if (buttons[i+10].rose()) {
+        usbMIDI.sendNoteOff(70 + i, 127, 1);
+      }
       if (abs(newPos / 4) > 0) {
-        buffer[idx++] = 0x04;
-        buffer[idx++] = newPos > 0;
-        buffer[idx++] = i;
-        buffer[idx++] = !buttons[i+10].read();
+        usbMIDI.sendControlChange(i + 3, (int)(newPos / 4) > 0 ? 65 : 63, 1);
 
         // Reset the encoder value
         encoders[i].write(0);
       }
     }
 
-    // If the buffer is not empty, send it over USB Raw HID
-    if (idx > 0) {
-      usb_rawhid_send(buffer, 100);
-      idx = 0;
-
-      // Clear the buffer
-      memset(buffer, 0, sizeof(buffer));
-    }
-
+    usbMIDI.send_now();
     // Wait 10 milliseconds before looping again
     delay(10);
   }
