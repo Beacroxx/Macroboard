@@ -43,13 +43,30 @@ int main() {
     prevSlider[1] = slider[1];
 
     // Read the current slider values
-    slider[0] = map(analogRead(22), 0, 4095, 0, 127);
-    slider[1] = map(analogRead(23), 0, 4095, 0, 127);
+    int16_t newSlider[2];
+    newSlider[0] = map(analogRead(22), 0, 4095, 0, 16383);
+    newSlider[1] = map(analogRead(23), 0, 4095, 0, 16383);
+
+    // Add Hysteresis
+    if (abs(newSlider[0] - slider[0]) > 10) {
+      slider[0] = newSlider[0];
+    }
+    if (abs(newSlider[1] - slider[1]) > 10) {
+      slider[1] = newSlider[1];
+    }
 
     // If the slider values have changed, add them to the buffer
     if (prevSlider[0] != slider[0] || prevSlider[1] != slider[1]) {
-      usbMIDI.sendControlChange(1, slider[0], 1);
-      usbMIDI.sendControlChange(2, slider[1], 1);
+      uint8_t msb = slider[0] >> 7 & 0x7F;
+      uint8_t lsb = slider[0] & 0x7F;
+
+      usbMIDI.sendControlChange(1, msb, 1);
+      usbMIDI.sendControlChange(2, lsb, 1);
+
+      msb = slider[1] >> 7 & 0x7F;
+      lsb = slider[1] & 0x7F;
+      usbMIDI.sendControlChange(3, msb, 1);
+      usbMIDI.sendControlChange(4, lsb, 1);
     }
 
     // Iterate over the buttons, add their values to the buffer if they have changed
@@ -72,7 +89,7 @@ int main() {
         usbMIDI.sendNoteOff(70 + i, 127, 1);
       }
       if (abs(newPos / 4) > 0) {
-        usbMIDI.sendControlChange(i + 3, (int)(newPos / 4) > 0 ? 65 : 63, 1);
+        usbMIDI.sendControlChange(i + 5, (int)(newPos / 4) > 0 ? 65 : 63, 1);
 
         // Reset the encoder value
         encoders[i].write(0);

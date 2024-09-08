@@ -171,6 +171,8 @@ int main() {
 
     printf("Connected to MIDI device. Listening on port %d\n", port);
 
+	int msb_left = 0;
+	int msb_right = 0;
   while (1) {
 		snd_seq_event_t *ev;
         
@@ -189,14 +191,22 @@ int main() {
 		switch (ev->type) {
 			case SND_SEQ_EVENT_CONTROLLER:
 				if (ev->data.control.param == 1) {
-					// Left Fader
-					set_volume(fader_left[0], ev->data.control.value * 516);
+						// Left Fader MSB
+						msb_left = ev->data.control.value;
 				} else if (ev->data.control.param == 2) {
-					// Right Fader
-					set_volume(fader_right[0], ev->data.control.value * 516);
-				} else if (ev->data.control.param >= 3 && ev->data.control.param < 13) {
+						// Left Fader LSB
+						int value_left = (msb_left << 7) | ev->data.control.value;
+						set_volume(fader_left[0], value_left * 4);
+				} else if (ev->data.control.param == 3) {
+						// Right Fader MSB
+						msb_right = ev->data.control.value;
+				} else if (ev->data.control.param == 4) {
+						// Right Fader LSB
+						int value_right = (msb_right << 7) | ev->data.control.value;
+						set_volume(fader_right[0], value_right * 4);
+				} else if (ev->data.control.param >= 5 && ev->data.control.param < 15) {
 					// Encoders
-					int index = ev->data.control.param - 3;
+					int index = ev->data.control.param - 5;
 					char pressed = enc_buttons[index];
 					if (ev->data.control.value == 65) {
 						// CW
