@@ -23,6 +23,16 @@ Encoder encoders[5]{
 uint16_t prevSlider[2] = {0, 0};
 uint16_t slider[2] = {0, 0};
 
+// Function to convert linear to logarithmic scale
+int16_t linearToLog(int16_t input) {
+    // Convert to float between 0 and 1
+    float normalized = input / 4095.0;
+    // Apply logarithmic scaling
+    float logValue = log10(normalized * 9 + 1) / log10(10);
+    // Map back to 0-16383 range
+    return round(logValue * 16383);
+}
+
 int main() {
   // Set up the analog to digital conversion
   analogReadResolution(12);
@@ -44,8 +54,8 @@ int main() {
 
     // Read the current slider values
     int16_t newSlider[2];
-    newSlider[0] = map(analogRead(22), 0, 4095, 0, 16383);
-    newSlider[1] = map(analogRead(23), 0, 4095, 0, 16383);
+    newSlider[0] = linearToLog(analogRead(22));
+    newSlider[1] = linearToLog(analogRead(23));
 
     // Add Hysteresis
     if (abs(newSlider[0] - slider[0]) > 10) {
