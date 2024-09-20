@@ -1,14 +1,14 @@
 PROG = macropad-driver
 
-CC = clang
-CFLAGS = -Wall -O3 -Wno-incompatible-pointer-types
+CC = clang++
+CFLAGS = -Wall -O3
 LIBS = -lasound
 STRIP = strip
 
 all: $(PROG)
 
-$(PROG): main.c
-	$(CC) $(CFLAGS) -o $(PROG) main.c $(LIBS)
+$(PROG): main.cpp
+	$(CC) $(CFLAGS) -o $(PROG) main.cpp $(LIBS)
 	$(STRIP) $(PROG)
 
 clean:

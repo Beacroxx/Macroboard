@@ -54,16 +54,20 @@ int main() {
 
     // Read the current slider values
     int16_t newSlider[2];
-    newSlider[0] = linearToLog(analogRead(22));
-    newSlider[1] = linearToLog(analogRead(23));
+    newSlider[0] = analogRead(22);
+    newSlider[1] = analogRead(23);
 
     // Add Hysteresis
-    if (abs(newSlider[0] - slider[0]) > 10) {
+    if (abs(newSlider[0] - slider[0]) > 8) {
       slider[0] = newSlider[0];
     }
-    if (abs(newSlider[1] - slider[1]) > 10) {
+    if (abs(newSlider[1] - slider[1]) > 8) {
       slider[1] = newSlider[1];
     }
+
+    // Convert to logarithmic scale
+    slider[0] = linearToLog(slider[0]);
+    slider[1] = linearToLog(slider[1]);
 
     // If the slider values have changed, add them to the buffer
     if (prevSlider[0] != slider[0] || prevSlider[1] != slider[1]) {
@@ -107,7 +111,7 @@ int main() {
     }
 
     usbMIDI.send_now();
-    // Wait 10 milliseconds before looping again
-    delay(10);
+    // Wait 25 milliseconds before looping again
+    delay(25);
   }
 }
